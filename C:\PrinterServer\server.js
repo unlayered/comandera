@@ -3,8 +3,25 @@ const express = require('express');
 const escpos = require('escpos');
 escpos.USB = require('escpos-usb');
 
+// Bypass proxy settings for local connections
+process.env.NO_PROXY = 'localhost,127.0.0.1';
+if (process.env.HTTP_PROXY || process.env.http_proxy) {
+    process.env.NO_PROXY += ',localhost,127.0.0.1';
+}
+
 const app = express();
 app.use(express.json());
+
+// Add CORS for local testing
+app.use((req, res, next) => {
+    res.header('Access-Control-Allow-Origin', '*');
+    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, X-API-Key');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    if (req.method === 'OPTIONS') {
+        return res.sendStatus(200);
+    }
+    next();
+});
 
 // Configure printer
 const deviceConfig = {
@@ -51,8 +68,13 @@ app.post('/print', checkApiKey, async (req, res) => {
     }
 });
 
+// Add a simple GET endpoint for testing connection
+app.get('/status', (req, res) => {
+    res.json({ status: 'Printer server is running' });
+});
+
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-    console.log(`Printer server running on port ${PORT}`);
+app.listen(PORT, '127.0.0.1', () => {  // Explicitly listen on localhost only
+    console.log(`Printer server running on http://127.0.0.1:${PORT}`);
     console.log('Waiting for print jobs...');
 }); 
