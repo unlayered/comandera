@@ -5,6 +5,13 @@ const { exec } = require('child_process');
 const fs = require('fs');
 const os = require('os');
 
+// Check if API key is configured
+if (!process.env.API_KEY) {
+    console.error('ERROR: API_KEY not set in environment variables');
+    console.error('Please create a .env file with your API key');
+    process.exit(1);
+}
+
 // Bypass proxy settings for local connections
 process.env.NO_PROXY = 'localhost,127.0.0.1';
 if (process.env.HTTP_PROXY || process.env.http_proxy) {
@@ -26,6 +33,37 @@ app.use((req, res, next) => {
     next();
 });
 
+// Add rate limiting for security
+const requestCounts = new Map();
+const RATE_LIMIT_WINDOW = 60000; // 1 minute
+const MAX_REQUESTS = 60; // 60 requests per minute
+
+const rateLimit = (req, res, next) => {
+    const ip = req.ip;
+    const now = Date.now();
+    
+    if (!requestCounts.has(ip)) {
+        requestCounts.set(ip, { count: 1, firstRequest: now });
+    } else {
+        const data = requestCounts.get(ip);
+        
+        if (now - data.firstRequest > RATE_LIMIT_WINDOW) {
+            // Reset if window has passed
+            data.count = 1;
+            data.firstRequest = now;
+        } else {
+            data.count++;
+            if (data.count > MAX_REQUESTS) {
+                return res.status(429).json({ error: 'Too many requests' });
+            }
+        }
+    }
+    
+    next();
+};
+
+app.use(rateLimit);
+
 // Serve test page at root
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'test.html'));
@@ -35,7 +73,8 @@ app.get('/', (req, res) => {
 const checkApiKey = (req, res, next) => {
     const apiKey = req.headers['x-api-key'];
     if (!apiKey || apiKey !== process.env.API_KEY) {
-        return res.status(401).json({ error: 'Unauthorized' });
+        console.error('Invalid API key attempt:', apiKey);
+        return res.status(401).json({ error: 'Unauthorized - Invalid API Key' });
     }
     next();
 };
@@ -72,10 +111,67 @@ function printFile(printerName, filePath) {
     });
 }
 
-// Test print endpoint
+// Format currency
+function formatCurrency(amount) {
+    return new Intl.NumberFormat('es-AR', {
+        style: 'currency',
+        currency: 'ARS'
+    }).format(amount);
+}
+
+// Generate receipt content for order paid event
+function generateOrderReceipt(event) {
+    const { orderDetails } = event.data;
+    const lines = [
+        '\x1B\x40',          // Initialize printer
+        '\x1B\x61\x01',      // Center alignment
+        '=== ORDEN DE COMPRA ===\n\n',
+        '\x1B\x61\x00',      // Left alignment
+        `Orden: #${event.orderId}\n`,
+        `Cliente: ${orderDetails.customerName}\n`,
+        `Email: ${orderDetails.customerEmail}\n\n`,
+        'Items:\n',
+        ...orderDetails.items.map(item => 
+            `${item.quantity}x ${item.name}\n` +
+            `  ${formatCurrency(item.unitPrice)} c/u\n` +
+            `  ${formatCurrency(item.quantity * item.unitPrice)}\n`
+        ),
+        '\n',
+        '\x1B\x61\x02',      // Right alignment
+        `Total: ${formatCurrency(orderDetails.totalAmount)}\n\n`,
+        '\x1B\x61\x01',      // Center alignment
+        new Date().toLocaleString() + '\n',
+        '\n\n\n\n\n',        // Feed lines
+        '\x1D\x56\x41'       // Cut paper
+    ];
+    
+    return lines.join('');
+}
+
+// Generate receipt content for item redeemed event
+function generateRedemptionReceipt(event) {
+    const { redemptionDetails } = event.data;
+    const lines = [
+        '\x1B\x40',          // Initialize printer
+        '\x1B\x61\x01',      // Center alignment
+        '=== CANJE DE ITEM ===\n\n',
+        '\x1B\x61\x00',      // Left alignment
+        `Orden: #${event.orderId}\n`,
+        `Item: ${redemptionDetails.productName}\n`,
+        `Cantidad: ${redemptionDetails.quantity}\n\n`,
+        '\x1B\x61\x01',      // Center alignment
+        new Date().toLocaleString() + '\n',
+        '\n\n\n\n\n',        // Feed lines
+        '\x1D\x56\x41'       // Cut paper
+    ];
+    
+    return lines.join('');
+}
+
+// Print endpoint
 app.post('/print', checkApiKey, async (req, res) => {
     try {
-        console.log('Print request received');
+        console.log('Print request received:', req.body);
         
         // Get list of printers
         const printers = await getPrinters();
@@ -91,21 +187,27 @@ app.post('/print', checkApiKey, async (req, res) => {
         // Create a temporary file with the print data
         const tempFile = path.join(os.tmpdir(), `print_${Date.now()}.txt`);
         
-        // Create test print data
-        const data = [
-            '\x1B\x40',          // Initialize printer
-            '\x1B\x61\x01',      // Center alignment
-            '=== BAR TEST PRINT ===\n\n',
-            'Mesa: 1\n',
-            'Pedido: #123\n\n',
-            'Items:\n',
-            '- 2x Cerveza\n',
-            '- 1x Coca Cola\n\n',
-            new Date().toLocaleString() + '\n\n',
-            'Impresora: ' + printerName + '\n',
-            '\n\n\n\n\n',        // Feed lines
-            '\x1D\x56\x41'       // Cut paper
-        ].join('');
+        // Generate receipt based on event type
+        let data;
+        const event = req.body;
+
+        if (!event.type || !event.businessId || !event.orderId) {
+            return res.status(400).json({ error: 'Missing required fields: type, businessId, orderId' });
+        }
+
+        if (event.type === 'order_paid') {
+            if (!event.data?.orderDetails) {
+                return res.status(400).json({ error: 'Missing orderDetails in event data' });
+            }
+            data = generateOrderReceipt(event);
+        } else if (event.type === 'item_redeemed') {
+            if (!event.data?.redemptionDetails) {
+                return res.status(400).json({ error: 'Missing redemptionDetails in event data' });
+            }
+            data = generateRedemptionReceipt(event);
+        } else {
+            return res.status(400).json({ error: 'Invalid event type. Must be order_paid or item_redeemed' });
+        }
 
         // Write data to temp file
         fs.writeFileSync(tempFile, data, 'binary');
@@ -120,7 +222,8 @@ app.post('/print', checkApiKey, async (req, res) => {
         res.json({ 
             success: true, 
             message: 'Print job sent',
-            printer: printerName
+            printer: printerName,
+            eventType: event.type
         });
 
     } catch (error) {
@@ -146,7 +249,7 @@ app.get('/status', async (req, res) => {
     }
 });
 
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3001;
 app.listen(PORT, '127.0.0.1', async () => {
     // List available printers on startup
     try {
