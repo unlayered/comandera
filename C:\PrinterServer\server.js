@@ -97,22 +97,28 @@ function getPrinters() {
     });
 }
 
-// Print file using Windows print spooler
+// Print file using Windows print spooler (PowerShell method)
 function printFile(printerName, filePath) {
     return new Promise((resolve, reject) => {
-        // Use the 'print' command, which sends raw data to the printer.
-        // The /D flag specifies the printer device.
-        const command = `print /D:"${printerName}" "${filePath}"`;
-        console.log(`Executing print command: ${command}`);
+        // Use PowerShell's Out-Printer command, which is often more robust.
+        // We escape the path to handle spaces or special characters.
+        const escapedPath = filePath.replace(/'/g, "''");
+        const command = `powershell -NoProfile -Command "Get-Content -Path '${escapedPath}' -Raw | Out-Printer -Name '${printerName}'"`;
+        console.log(`Executing PowerShell print command: ${command}`);
 
         exec(command, (error, stdout, stderr) => {
-            if (error) {
-                console.error(`Print command failed. Stderr: ${stderr}`);
-                console.error(`Error:`, error);
-                reject(new Error(`Print command failed: ${stderr || error.message}`));
+            // For PowerShell, it's important to check stderr, as that's where errors are written.
+            if (stderr) {
+                console.error(`PowerShell print command failed. Stderr: ${stderr}`);
+                reject(new Error(`PowerShell print command failed: ${stderr}`));
                 return;
             }
-            console.log(`Print command successful. Stdout: ${stdout}`);
+            if (error) {
+                console.error(`Error executing PowerShell:`, error);
+                reject(error);
+                return;
+            }
+            console.log(`PowerShell print command successful. Stdout: ${stdout}`);
             resolve(stdout);
         });
     });
