@@ -130,10 +130,7 @@ function formatCurrency(amount) {
 function generateOrderReceipt(event) {
     const { orderDetails } = event.data;
     const lines = [
-        '\x1B\x40',          // Initialize printer
-        '\x1B\x61\x01',      // Center alignment
         '=== ORDEN DE COMPRA ===\n\n',
-        '\x1B\x61\x00',      // Left alignment
         `Orden: #${event.orderId}\n`,
         `Cliente: ${orderDetails.customerName}\n`,
         `Email: ${orderDetails.customerEmail}\n\n`,
@@ -141,15 +138,12 @@ function generateOrderReceipt(event) {
         ...orderDetails.items.map(item => 
             `${item.quantity}x ${item.name}\n` +
             `  ${formatCurrency(item.unitPrice)} c/u\n` +
-            `  ${formatCurrency(item.quantity * item.unitPrice)}\n`
+            `  Total: ${formatCurrency(item.quantity * item.unitPrice)}\n`
         ),
         '\n',
-        '\x1B\x61\x02',      // Right alignment
-        `Total: ${formatCurrency(orderDetails.totalAmount)}\n\n`,
-        '\x1B\x61\x01',      // Center alignment
+        `TOTAL GENERAL: ${formatCurrency(orderDetails.totalAmount)}\n\n`,
         new Date().toLocaleString() + '\n',
-        '\n\n\n\n\n',        // Feed lines
-        '\x1D\x56\x41'       // Cut paper
+        '\n\n\n\n\n', // Extra lines to push paper out
     ];
     
     return lines.join('');
@@ -159,17 +153,12 @@ function generateOrderReceipt(event) {
 function generateRedemptionReceipt(event) {
     const { redemptionDetails } = event.data;
     const lines = [
-        '\x1B\x40',          // Initialize printer
-        '\x1B\x61\x01',      // Center alignment
         '=== CANJE DE ITEM ===\n\n',
-        '\x1B\x61\x00',      // Left alignment
         `Orden: #${event.orderId}\n`,
         `Item: ${redemptionDetails.productName}\n`,
         `Cantidad: ${redemptionDetails.quantity}\n\n`,
-        '\x1B\x61\x01',      // Center alignment
         new Date().toLocaleString() + '\n',
-        '\n\n\n\n\n',        // Feed lines
-        '\x1D\x56\x41'       // Cut paper
+        '\n\n\n\n\n', // Extra lines to push paper out
     ];
     
     return lines.join('');
