@@ -100,12 +100,19 @@ function getPrinters() {
 // Print file using Windows print spooler
 function printFile(printerName, filePath) {
     return new Promise((resolve, reject) => {
-        const command = `rundll32 printui.dll,PrintUIEntry /k /n "${printerName}" "${filePath}"`;
+        // Use the 'print' command, which sends raw data to the printer.
+        // The /D flag specifies the printer device.
+        const command = `print /D:"${printerName}" "${filePath}"`;
+        console.log(`Executing print command: ${command}`);
+
         exec(command, (error, stdout, stderr) => {
             if (error) {
-                reject(error);
+                console.error(`Print command failed. Stderr: ${stderr}`);
+                console.error(`Error:`, error);
+                reject(new Error(`Print command failed: ${stderr || error.message}`));
                 return;
             }
+            console.log(`Print command successful. Stdout: ${stdout}`);
             resolve(stdout);
         });
     });
