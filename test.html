@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Printer Test</title>
+</head>
+<body>
+    <h1>Test Printer</h1>
+    <button onclick="testPrint()">Print Hello World</button>
+    <button onclick="checkStatus()">Check Server Status</button>
+    <div id="result"></div>
+
+    <script>
+        function showResult(message) {
+            document.getElementById('result').innerText = message;
+        }
+
+        function checkStatus() {
+            var xhr = new XMLHttpRequest();
+            xhr.open('GET', 'http://127.0.0.1:3000/status', true);
+            
+            xhr.onload = function() {
+                if (xhr.status === 200) {
+                    showResult('Server is running: ' + xhr.responseText);
+                } else {
+                    showResult('Error checking status: ' + xhr.status);
+                }
+            };
+            
+            xhr.onerror = function() {
+                showResult('Error connecting to server');
+            };
+            
+            xhr.send();
+        }
+
+        function testPrint() {
+            var xhr = new XMLHttpRequest();
+            xhr.open('POST', 'http://127.0.0.1:3000/print', true);
+            xhr.setRequestHeader('Content-Type', 'application/json');
+            xhr.setRequestHeader('X-API-Key', 'your-api-key-here'); // Replace with your API key
+
+            xhr.onload = function() {
+                if (xhr.status === 200) {
+                    showResult('Print job sent successfully: ' + xhr.responseText);
+                } else {
+                    showResult('Error sending print job: ' + xhr.status + ' ' + xhr.responseText);
+                }
+            };
+            
+            xhr.onerror = function() {
+                showResult('Error connecting to server');
+            };
+            
+            xhr.send(JSON.stringify({}));
+        }
+    </script>
+</body>
+</html> 
