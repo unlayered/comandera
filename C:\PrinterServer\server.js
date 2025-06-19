@@ -1,7 +1,9 @@
 require('dotenv').config();
 const express = require('express');
 const path = require('path');
-const { ThermalPrinter, PrinterTypes } = require('node-thermal-printer');
+const { exec } = require('child_process');
+const fs = require('fs');
+const os = require('os');
 
 // Bypass proxy settings for local connections
 process.env.NO_PROXY = 'localhost,127.0.0.1';
@@ -38,20 +40,36 @@ const checkApiKey = (req, res, next) => {
     next();
 };
 
-// Initialize printer
-let printer;
-try {
-    printer = new ThermalPrinter({
-        type: PrinterTypes.EPSON,
-        interface: 'printer:YOUR_PRINTER_NAME', // We'll need to replace this with your actual printer name
-        driver: require('printer'),
-        options: {
-            timeout: 5000
-        }
+// Get list of printers using Windows command
+function getPrinters() {
+    return new Promise((resolve, reject) => {
+        exec('wmic printer get name', (error, stdout, stderr) => {
+            if (error) {
+                reject(error);
+                return;
+            }
+            // Parse the output to get printer names
+            const printers = stdout.split('\n')
+                .map(line => line.trim())
+                .filter(line => line && line !== 'Name')
+                .filter(Boolean);
+            resolve(printers);
+        });
     });
-    console.log('Printer initialized');
-} catch (error) {
-    console.error('Printer initialization error:', error);
+}
+
+// Print file using Windows print spooler
+function printFile(printerName, filePath) {
+    return new Promise((resolve, reject) => {
+        const command = `rundll32 printui.dll,PrintUIEntry /k /n "${printerName}" "${filePath}"`;
+        exec(command, (error, stdout, stderr) => {
+            if (error) {
+                reject(error);
+                return;
+            }
+            resolve(stdout);
+        });
+    });
 }
 
 // Test print endpoint
@@ -59,32 +77,47 @@ app.post('/print', checkApiKey, async (req, res) => {
     try {
         console.log('Print request received');
         
-        if (!printer) {
-            return res.status(500).json({ error: 'Printer not initialized' });
+        // Get list of printers
+        const printers = await getPrinters();
+        console.log('Available printers:', printers);
+
+        if (!printers || printers.length === 0) {
+            return res.status(500).json({ error: 'No printers found' });
         }
 
-        let isConnected = await printer.isPrinterConnected();
-        console.log('Printer connected:', isConnected);
+        // Use the first printer found (we can make this configurable later)
+        const printerName = printers[0];
+        console.log('Using printer:', printerName);
 
-        if (!isConnected) {
-            return res.status(500).json({ error: 'Printer not connected' });
-        }
-
-        // Test print
-        printer.alignCenter();
-        printer.println('Hello World!');
-        printer.println('Test Print');
-        printer.println(new Date().toLocaleString());
-        printer.cut();
+        // Create a temporary file with the print data
+        const tempFile = path.join(os.tmpdir(), `print_${Date.now()}.txt`);
         
-        try {
-            await printer.execute();
-            console.log('Print successful');
-            res.json({ success: true, message: 'Print job sent' });
-        } catch (error) {
-            console.error('Print execution error:', error);
-            res.status(500).json({ error: 'Print failed', details: error.message });
-        }
+        // Create test print data
+        const data = [
+            '\x1B\x40',          // Initialize printer
+            '\x1B\x61\x01',      // Center alignment
+            'Hello World!\n',
+            'Test Print\n',
+            new Date().toLocaleString() + '\n',
+            '\n\n\n\n\n',        // Feed lines
+            '\x1D\x56\x41'       // Cut paper
+        ].join('');
+
+        // Write data to temp file
+        fs.writeFileSync(tempFile, data, 'binary');
+
+        // Send to printer
+        await printFile(printerName, tempFile);
+
+        // Clean up temp file
+        fs.unlinkSync(tempFile);
+
+        console.log('Print successful');
+        res.json({ 
+            success: true, 
+            message: 'Print job sent',
+            printer: printerName
+        });
 
     } catch (error) {
         console.log('Top level error:', error);
@@ -95,28 +128,30 @@ app.post('/print', checkApiKey, async (req, res) => {
 // Status endpoint
 app.get('/status', async (req, res) => {
     try {
-        if (!printer) {
-            return res.json({ 
-                status: 'Printer not initialized',
-                error: 'Printer configuration missing'
-            });
-        }
-
-        const isConnected = await printer.isPrinterConnected();
+        const printers = await getPrinters();
         res.json({ 
             status: 'Printer server is running',
-            printerConnected: isConnected
+            printersFound: printers.length,
+            printers: printers
         });
     } catch (e) {
         res.json({ 
             status: 'Printer server is running',
-            error: 'Error checking printer: ' + (e.message || String(e))
+            error: 'Error finding printers: ' + (e.message || String(e))
         });
     }
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, '127.0.0.1', () => {
+app.listen(PORT, '127.0.0.1', async () => {
+    // List available printers on startup
+    try {
+        const printers = await getPrinters();
+        console.log('Available printers:', printers);
+    } catch (e) {
+        console.log('Error listing printers:', e);
+    }
+
     console.log(`Printer server running on http://127.0.0.1:${PORT}`);
     console.log('Waiting for print jobs...');
 }); 
