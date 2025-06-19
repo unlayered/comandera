@@ -2,32 +2,128 @@
 <html>
 <head>
     <title>Printer Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 20px auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 20px;
+        }
+        .button-group {
+            margin: 20px 0;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-right: 10px;
+            font-size: 14px;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        button:active {
+            background-color: #3d8b40;
+        }
+        #result {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 4px;
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+        }
+        .status {
+            margin-top: 20px;
+        }
+        .status-item {
+            margin: 5px 0;
+        }
+        .error {
+            color: #dc3545;
+        }
+        .success {
+            color: #28a745;
+        }
+    </style>
 </head>
 <body>
-    <h1>Test Printer</h1>
-    <button onclick="testPrint()">Print Hello World</button>
-    <button onclick="checkStatus()">Check Server Status</button>
-    <div id="result"></div>
+    <div class="container">
+        <h1>Printer Test Panel</h1>
+        
+        <div class="button-group">
+            <button onclick="testPrint()">Print Test Page</button>
+            <button onclick="checkStatus()">Check Printer Status</button>
+        </div>
+
+        <div id="result"></div>
+    </div>
 
     <script>
-        function showResult(message) {
-            document.getElementById('result').innerText = message;
+        function showResult(message, isError = false) {
+            const resultDiv = document.getElementById('result');
+            
+            try {
+                // Try to parse as JSON for better formatting
+                const jsonData = typeof message === 'string' ? JSON.parse(message) : message;
+                let html = '<div class="status">';
+                
+                if (jsonData.error) {
+                    html += `<div class="status-item error">Error: ${jsonData.error}</div>`;
+                } else if (jsonData.success) {
+                    html += `<div class="status-item success">Success: ${jsonData.message}</div>`;
+                    if (jsonData.printer) {
+                        html += `<div class="status-item">Printer: ${jsonData.printer}</div>`;
+                    }
+                } else if (jsonData.status) {
+                    // Status response
+                    html += `<div class="status-item">${jsonData.status}</div>`;
+                    if (jsonData.printersFound) {
+                        html += `<div class="status-item">Printers found: ${jsonData.printersFound}</div>`;
+                        html += '<div class="status-item">Available printers:</div>';
+                        html += '<ul>';
+                        jsonData.printers.forEach(printer => {
+                            html += `<li>${printer}</li>`;
+                        });
+                        html += '</ul>';
+                    }
+                }
+                
+                html += '</div>';
+                resultDiv.innerHTML = html;
+            } catch (e) {
+                // If not JSON, display as plain text
+                resultDiv.innerHTML = `<div class="status-item ${isError ? 'error' : ''}">${message}</div>`;
+            }
         }
 
         function checkStatus() {
             var xhr = new XMLHttpRequest();
-            xhr.open('GET', 'http://127.0.0.1:3000/status', true);
+            xhr.open('GET', 'http://127.0.0.1:3001/status', true);
             
             xhr.onload = function() {
                 if (xhr.status === 200) {
-                    showResult('Server is running: ' + xhr.responseText);
+                    showResult(xhr.responseText);
                 } else {
-                    showResult('Error checking status: ' + xhr.status);
+                    showResult('Error checking status: ' + xhr.status, true);
                 }
             };
             
             xhr.onerror = function() {
-                showResult('Error connecting to server');
+                showResult('Error connecting to server', true);
             };
             
             xhr.send();
@@ -35,24 +131,27 @@
 
         function testPrint() {
             var xhr = new XMLHttpRequest();
-            xhr.open('POST', 'http://127.0.0.1:3000/print', true);
+            xhr.open('POST', 'http://127.0.0.1:3001/print', true);
             xhr.setRequestHeader('Content-Type', 'application/json');
             xhr.setRequestHeader('X-API-Key', 'your-api-key-here'); // Replace with your API key
 
             xhr.onload = function() {
                 if (xhr.status === 200) {
-                    showResult('Print job sent successfully: ' + xhr.responseText);
+                    showResult(xhr.responseText);
                 } else {
-                    showResult('Error sending print job: ' + xhr.status + ' ' + xhr.responseText);
+                    showResult(xhr.responseText, true);
                 }
             };
             
             xhr.onerror = function() {
-                showResult('Error connecting to server');
+                showResult('Error connecting to server', true);
             };
             
             xhr.send(JSON.stringify({}));
         }
+
+        // Check status on page load
+        window.onload = checkStatus;
     </script>
 </body>
 </html> 
