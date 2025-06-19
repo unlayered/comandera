@@ -1,6 +1,7 @@
 require('dotenv').config();
 const express = require('express');
 const escpos = require('escpos');
+const path = require('path');
 escpos.USB = require('escpos-usb');
 
 // Bypass proxy settings for local connections
@@ -11,6 +12,7 @@ if (process.env.HTTP_PROXY || process.env.http_proxy) {
 
 const app = express();
 app.use(express.json());
+app.use(express.static(__dirname)); // Serve static files from current directory
 
 // Add CORS for local testing
 app.use((req, res, next) => {
@@ -21,6 +23,11 @@ app.use((req, res, next) => {
         return res.sendStatus(200);
     }
     next();
+});
+
+// Serve test page at root
+app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'test.html'));
 });
 
 // Configure printer
