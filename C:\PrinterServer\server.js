@@ -154,8 +154,10 @@ function generateOrderReceipt(event) {
         '\x1B\x61\x02',      // Right Alignment
         `TOTAL: ${formatCurrency(orderDetails.totalAmount)}\n\n`,
         '\x1B\x61\x01',      // Center Alignment
-        new Date().toLocaleString() + '\n\n\n',
-        '\x1D\x56\x41',       // Cut Paper
+        new Date().toLocaleString() + '\n\n',
+        // Feed extra lines to push the paper out, then cut.
+        '\n\n\n\n\n\n\n',    // Add 7 blank lines for spacing
+        '\x1D\x56\x42\x00'   // A more compatible cut command (Full cut)
     ];
     
     return lines.join('');
@@ -173,8 +175,10 @@ function generateRedemptionReceipt(event) {
         `Item: ${redemptionDetails.productName}\n`,
         `Cantidad: ${redemptionDetails.quantity}\n\n`,
         '\x1B\x61\x01',      // Center Alignment
-        new Date().toLocaleString() + '\n\n\n',
-        '\x1D\x56\x41',       // Cut Paper
+        new Date().toLocaleString() + '\n\n',
+        // Feed extra lines to push the paper out, then cut.
+        '\n\n\n\n\n\n\n',    // Add 7 blank lines for spacing
+        '\x1D\x56\x42\x00'   // A more compatible cut command (Full cut)
     ];
     
     return lines.join('');
