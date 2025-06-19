@@ -1,8 +1,11 @@
 require('dotenv').config();
 const express = require('express');
-const escpos = require('escpos');
 const path = require('path');
-escpos.USB = require('escpos-usb');
+
+// Initialize escpos differently
+const escpos = require('escpos');
+const USB = require('escpos-usb');
+escpos.USB = USB;
 
 // Bypass proxy settings for local connections
 process.env.NO_PROXY = 'localhost,127.0.0.1';
@@ -36,6 +39,14 @@ const deviceConfig = {
     pid: 0x811E   // Your Product ID
 };
 
+// List available devices
+try {
+    const devices = USB.findPrinter();
+    console.log('Available USB devices:', devices);
+} catch (e) {
+    console.log('Error finding USB devices:', e);
+}
+
 // Middleware to check API key
 const checkApiKey = (req, res, next) => {
     const apiKey = req.headers['x-api-key'];
@@ -46,43 +57,42 @@ const checkApiKey = (req, res, next) => {
 };
 
 // Test print endpoint
-app.post('/print', checkApiKey, async (req, res) => {
+app.post('/print', checkApiKey, (req, res) => {
     try {
-        // Create USB device
-        const device = new escpos.USB(deviceConfig.vid, deviceConfig.pid);
-        
-        // Create printer
-        const options = { encoding: "GB18030" /* default */ }
-        const printer = new escpos.Printer(device, options);
+        // Find printer
+        const devices = USB.findPrinter();
+        if (!devices || devices.length === 0) {
+            throw new Error('No USB printers found');
+        }
 
-        // Wrap the printer operations in a Promise
-        const printJob = new Promise((resolve, reject) => {
-            device.open((error) => {
-                if (error) {
-                    console.error('Printer open error:', error);
-                    reject(error);
-                    return;
-                }
+        // Use the first found printer
+        const device = new USB();
+        const printer = new escpos.Printer(device);
 
-                printer
-                    .font('a')
-                    .align('ct')
-                    .text('Hello World!')
-                    .text('Test Print')
-                    .text(new Date().toLocaleString())
-                    .cut()
-                    .close(error => {
-                        if (error) {
-                            reject(error);
-                        } else {
-                            resolve();
-                        }
-                    });
+        device.open(function(error){
+            if(error) {
+                console.error('Printer open error:', error);
+                return res.status(500).json({ 
+                    error: 'Printer connection failed',
+                    details: error.message || String(error)
+                });
+            }
+
+            printer
+                .font('a')
+                .align('ct')
+                .text('Hello World!')
+                .text('Test Print')
+                .text(new Date().toLocaleString())
+                .cut()
+                .close();
+
+            res.json({ 
+                success: true, 
+                message: 'Print job sent',
+                printerInfo: devices[0]
             });
         });
-
-        await printJob;
-        res.json({ success: true, message: 'Print job completed' });
 
     } catch (error) {
         console.error('Printer error:', error);
@@ -95,10 +105,22 @@ app.post('/print', checkApiKey, async (req, res) => {
 
 // Add a simple GET endpoint for testing connection
 app.get('/status', (req, res) => {
-    res.json({ status: 'Printer server is running' });
+    try {
+        const devices = USB.findPrinter();
+        res.json({ 
+            status: 'Printer server is running',
+            printersFound: devices.length,
+            printers: devices
+        });
+    } catch (e) {
+        res.json({ 
+            status: 'Printer server is running',
+            error: 'Error finding printers: ' + (e.message || String(e))
+        });
+    }
 });
 
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3001;
 app.listen(PORT, '127.0.0.1', () => {  // Explicitly listen on localhost only
     console.log(`Printer server running on http://127.0.0.1:${PORT}`);
     console.log('Waiting for print jobs...');
