@@ -48,30 +48,48 @@ const checkApiKey = (req, res, next) => {
 // Test print endpoint
 app.post('/print', checkApiKey, async (req, res) => {
     try {
+        // Create USB device
         const device = new escpos.USB(deviceConfig.vid, deviceConfig.pid);
-        const printer = new escpos.Printer(device);
+        
+        // Create printer
+        const options = { encoding: "GB18030" /* default */ }
+        const printer = new escpos.Printer(device, options);
 
-        device.open(function(error){
-            if(error) {
-                console.error('Printer open error:', error);
-                return res.status(500).json({ error: 'Printer connection failed' });
-            }
+        // Wrap the printer operations in a Promise
+        const printJob = new Promise((resolve, reject) => {
+            device.open((error) => {
+                if (error) {
+                    console.error('Printer open error:', error);
+                    reject(error);
+                    return;
+                }
 
-            printer
-                .font('a')
-                .align('ct')
-                .text('Hello World!')
-                .text('Test Print')
-                .text(new Date().toLocaleString())
-                .cut()
-                .close();
-
-            res.json({ success: true, message: 'Print job sent' });
+                printer
+                    .font('a')
+                    .align('ct')
+                    .text('Hello World!')
+                    .text('Test Print')
+                    .text(new Date().toLocaleString())
+                    .cut()
+                    .close(error => {
+                        if (error) {
+                            reject(error);
+                        } else {
+                            resolve();
+                        }
+                    });
+            });
         });
+
+        await printJob;
+        res.json({ success: true, message: 'Print job completed' });
 
     } catch (error) {
         console.error('Printer error:', error);
-        res.status(500).json({ error: 'Print failed', details: error.message });
+        res.status(500).json({ 
+            error: 'Print failed', 
+            details: error.message || String(error)
+        });
     }
 });
 
