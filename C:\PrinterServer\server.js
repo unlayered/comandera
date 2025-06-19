@@ -136,20 +136,26 @@ function formatCurrency(amount) {
 function generateOrderReceipt(event) {
     const { orderDetails } = event.data;
     const lines = [
+        '\x1B\x40',          // Initialize Printer
+        '\x1B\x61\x01',      // Center Alignment
         '=== ORDEN DE COMPRA ===\n\n',
-        `Orden: #${event.orderId}\n`,
+        '\x1B\x61\x00',      // Left Alignment
+        `Orden: #${event.orderId.slice(-6).toUpperCase()}\n`,
         `Cliente: ${orderDetails.customerName}\n`,
         `Email: ${orderDetails.customerEmail}\n\n`,
+        '--------------------------------\n',
         'Items:\n',
         ...orderDetails.items.map(item => 
             `${item.quantity}x ${item.name}\n` +
             `  ${formatCurrency(item.unitPrice)} c/u\n` +
             `  Total: ${formatCurrency(item.quantity * item.unitPrice)}\n`
         ),
-        '\n',
-        `TOTAL GENERAL: ${formatCurrency(orderDetails.totalAmount)}\n\n`,
-        new Date().toLocaleString() + '\n',
-        '\n\n\n\n\n', // Extra lines to push paper out
+        '--------------------------------\n',
+        '\x1B\x61\x02',      // Right Alignment
+        `TOTAL: ${formatCurrency(orderDetails.totalAmount)}\n\n`,
+        '\x1B\x61\x01',      // Center Alignment
+        new Date().toLocaleString() + '\n\n\n',
+        '\x1D\x56\x41',       // Cut Paper
     ];
     
     return lines.join('');
@@ -159,12 +165,16 @@ function generateOrderReceipt(event) {
 function generateRedemptionReceipt(event) {
     const { redemptionDetails } = event.data;
     const lines = [
+        '\x1B\x40',          // Initialize Printer
+        '\x1B\x61\x01',      // Center Alignment
         '=== CANJE DE ITEM ===\n\n',
-        `Orden: #${event.orderId}\n`,
+        '\x1B\x61\x00',      // Left Alignment
+        `Orden: #${event.orderId.slice(-6).toUpperCase()}\n`,
         `Item: ${redemptionDetails.productName}\n`,
         `Cantidad: ${redemptionDetails.quantity}\n\n`,
-        new Date().toLocaleString() + '\n',
-        '\n\n\n\n\n', // Extra lines to push paper out
+        '\x1B\x61\x01',      // Center Alignment
+        new Date().toLocaleString() + '\n\n\n',
+        '\x1D\x56\x41',       // Cut Paper
     ];
     
     return lines.join('');
