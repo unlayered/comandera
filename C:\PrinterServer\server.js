@@ -59,47 +59,50 @@ const checkApiKey = (req, res, next) => {
 // Test print endpoint
 app.post('/print', checkApiKey, (req, res) => {
     try {
-        // Find printer
+        console.log('Print request received');
+        
+        // Try to find the printer first
         const devices = USB.findPrinter();
+        console.log('Found devices:', devices);
+        
         if (!devices || devices.length === 0) {
-            throw new Error('No USB printers found');
+            console.log('No printers found');
+            return res.status(500).json({ error: 'No USB printers found' });
         }
 
-        // Use the first found printer
+        // Create device and printer
         const device = new USB();
-        const printer = new escpos.Printer(device);
-
-        device.open(function(error){
+        console.log('USB device created');
+        
+        // Simple error handling
+        device.open((error) => {
             if(error) {
-                console.error('Printer open error:', error);
-                return res.status(500).json({ 
-                    error: 'Printer connection failed',
-                    details: error.message || String(error)
-                });
+                console.log('Error opening device:', error);
+                return res.status(500).json({ error: 'Failed to open printer' });
             }
 
-            printer
-                .font('a')
-                .align('ct')
-                .text('Hello World!')
-                .text('Test Print')
-                .text(new Date().toLocaleString())
-                .cut()
-                .close();
+            try {
+                const printer = new escpos.Printer(device);
+                console.log('Printer created');
 
-            res.json({ 
-                success: true, 
-                message: 'Print job sent',
-                printerInfo: devices[0]
-            });
+                printer
+                    .text('Test\n')
+                    .text('Hello World\n')
+                    .feed(4)
+                    .cut()
+                    .close();
+
+                console.log('Print commands sent');
+                res.json({ success: true });
+            } catch (e) {
+                console.log('Error during print:', e);
+                res.status(500).json({ error: 'Print operation failed' });
+            }
         });
 
     } catch (error) {
-        console.error('Printer error:', error);
-        res.status(500).json({ 
-            error: 'Print failed', 
-            details: error.message || String(error)
-        });
+        console.log('Top level error:', error);
+        res.status(500).json({ error: String(error) });
     }
 });
 
@@ -120,7 +123,7 @@ app.get('/status', (req, res) => {
     }
 });
 
-const PORT = process.env.PORT || 3001;
+const PORT = process.env.PORT || 3000;
 app.listen(PORT, '127.0.0.1', () => {  // Explicitly listen on localhost only
     console.log(`Printer server running on http://127.0.0.1:${PORT}`);
     console.log('Waiting for print jobs...');
