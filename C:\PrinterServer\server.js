@@ -81,12 +81,11 @@ app.post('/print', checkApiKey, async (req, res) => {
         const printers = await getPrinters();
         console.log('Available printers:', printers);
 
-        if (!printers || printers.length === 0) {
-            return res.status(500).json({ error: 'No printers found' });
+        // Find the "Barra" printer
+        const printerName = printers.find(p => p.includes('Barra'));
+        if (!printerName) {
+            return res.status(500).json({ error: 'Printer "Barra" not found. Available printers: ' + printers.join(', ') });
         }
-
-        // Use the first printer found (we can make this configurable later)
-        const printerName = printers[0];
         console.log('Using printer:', printerName);
 
         // Create a temporary file with the print data
@@ -96,9 +95,14 @@ app.post('/print', checkApiKey, async (req, res) => {
         const data = [
             '\x1B\x40',          // Initialize printer
             '\x1B\x61\x01',      // Center alignment
-            'Hello World!\n',
-            'Test Print\n',
-            new Date().toLocaleString() + '\n',
+            '=== BAR TEST PRINT ===\n\n',
+            'Mesa: 1\n',
+            'Pedido: #123\n\n',
+            'Items:\n',
+            '- 2x Cerveza\n',
+            '- 1x Coca Cola\n\n',
+            new Date().toLocaleString() + '\n\n',
+            'Impresora: ' + printerName + '\n',
             '\n\n\n\n\n',        // Feed lines
             '\x1D\x56\x41'       // Cut paper
         ].join('');
